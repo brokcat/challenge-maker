@@ -113,12 +113,18 @@ sekurlsa::logonPasswords
 
 ## About the Challenge Maker
 
-I am a Challenge Maker on CyberDefenders and likely on other platforms as well.
+I am a Challenge Maker on CyberDefenders and likely on other platforms as well. My interests include endpoint forensics, network forensics, threat hunting, CTI (Cyber Threat Intelligence), and many other areas in the cyber defensive world and space.
 
-I am passionate about endpoint forensics, network forensics, threat hunting, CTI (Cyber Threat Intelligence), and many other fields in the cyber defensive world and space.
+I'm a student at **Ecole 2600**, a cybersecurity school in Paris. :fr: :pirate_flag:
 
-If you wish to contact me, you can reach me on Discord at **brokcat**. Feel free to send me feedback about my challenges—I'd love to hear your thoughts!
+If you wish to contact me or provide feedback, you can reach me on Discord at **brokcat**.
 
-I am a student at **Ecole 2600**, a cybersecurity school in Paris. :fr: :pirate_flag:
+## Memory Dump Download
+
+Due to its large size, the memory dump required for this challenge is hosted externally:
+
+[Download dump.raw.tar.gz from Proton Drive](https://drive.proton.me/urls/3TA577M3DM#SpRO6BPcHg5w)
+
+*If you need access, please contact me on Discord: brokcat.*
 
 ---
